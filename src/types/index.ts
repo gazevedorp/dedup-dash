@@ -1,4 +1,4 @@
-import { LucideProps } from 'lucide-react';
+import type { LucideProps } from 'lucide-react';
 import React from 'react';
 
 export type IconComponent = React.ComponentType<LucideProps>;
