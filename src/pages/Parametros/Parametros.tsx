@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { DataTable } from '@/components/ui/table';
 import { Modal } from '@/components/ui/modal';
@@ -6,21 +6,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Plus } from 'lucide-react';
-
-interface Parametro {
-  id: number;
-  chave: string;
-  peso: string;
-  descricao: string;
-}
+import { parametrosApi, type Parametro } from '@/api/parametros.api';
 
 const Parametros = () => {
-  const [parametros, setParametros] = useState<Parametro[]>([
-    { id: 1, chave: 'parametro_1', peso: '1', descricao: 'Parâmetro 1' },
-    { id: 2, chave: 'parametro_2', peso: '2', descricao: 'Parâmetro 2' },
-    { id: 3, chave: 'parametro_3', peso: '3', descricao: 'Parâmetro 3' },
-  ]);
-
+  const [parametros, setParametros] = useState<Parametro[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingParam, setEditingParam] = useState<Parametro | null>(null);
   const [formData, setFormData] = useState({
@@ -28,6 +18,24 @@ const Parametros = () => {
     peso: '',
     descricao: '',
   });
+
+  // Carregar parâmetros ao montar o componente
+  useEffect(() => {
+    loadParametros();
+  }, []);
+
+  const loadParametros = async () => {
+    try {
+      setIsLoading(true);
+      const data = await parametrosApi.getAll();
+      setParametros(data);
+    } catch (error) {
+      console.error('Erro ao carregar parâmetros:', error);
+      alert('Erro ao carregar parâmetros');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const columns: ColumnDef<Parametro>[] = [
     {
@@ -64,39 +72,44 @@ const Parametros = () => {
     setIsModalOpen(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!formData.chave || !formData.peso || !formData.descricao) {
       alert('Preencha todos os campos');
       return;
     }
 
-    if (editingParam) {
-      // Editar parâmetro existente
-      setParametros(
-        parametros.map((p) =>
-          p.id === editingParam.id
-            ? { ...p, ...formData }
-            : p
-        )
-      );
-    } else {
-      // Criar novo parâmetro
-      const newParam: Parametro = {
-        id: Math.max(...parametros.map((p) => p.id), 0) + 1,
-        ...formData,
-      };
-      setParametros([...parametros, newParam]);
-    }
+    try {
+      if (editingParam) {
+        // Editar parâmetro existente
+        await parametrosApi.update(editingParam.id, formData);
+      } else {
+        // Criar novo parâmetro
+        await parametrosApi.create(formData);
+      }
 
-    setIsModalOpen(false);
-    setFormData({ chave: '', peso: '', descricao: '' });
-  };
-
-  const handleModalDelete = () => {
-    if (editingParam && confirm('Deseja realmente excluir este parâmetro?')) {
-      setParametros(parametros.filter((p) => p.id !== editingParam.id));
+      // Recarregar lista de parâmetros
+      await loadParametros();
       setIsModalOpen(false);
       setFormData({ chave: '', peso: '', descricao: '' });
+    } catch (error) {
+      console.error('Erro ao salvar parâmetro:', error);
+      alert('Erro ao salvar parâmetro');
+    }
+  };
+
+  const handleModalDelete = async () => {
+    if (!editingParam || !confirm('Deseja realmente excluir este parâmetro?')) {
+      return;
+    }
+
+    try {
+      await parametrosApi.delete(editingParam.id);
+      await loadParametros();
+      setIsModalOpen(false);
+      setFormData({ chave: '', peso: '', descricao: '' });
+    } catch (error) {
+      console.error('Erro ao excluir parâmetro:', error);
+      alert('Erro ao excluir parâmetro');
     }
   };
 
@@ -117,13 +130,19 @@ const Parametros = () => {
         </div>
 
         <div className="bg-card border rounded-lg p-6">
-          <DataTable
-            columns={columns}
-            data={parametros}
-            searchKey="chave"
-            searchPlaceholder="Buscar por chave..."
-            onRowClick={handleRowClick}
-          />
+          {isLoading ? (
+            <div className="text-center py-8 text-muted-foreground">
+              Carregando parâmetros...
+            </div>
+          ) : (
+            <DataTable
+              columns={columns}
+              data={parametros}
+              searchKey="chave"
+              searchPlaceholder="Buscar por chave..."
+              onRowClick={handleRowClick}
+            />
+          )}
         </div>
       </div>
 

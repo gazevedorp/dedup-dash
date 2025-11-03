@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { DataTable } from '@/components/ui/table';
 import { Modal } from '@/components/ui/modal';
@@ -6,28 +6,38 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Plus } from 'lucide-react';
-
-interface Usuario {
-  id: number;
-  nome: string;
-  email: string;
-  senha: string;
-}
+import { usuariosApi, type Usuario } from '@/api/usuarios.api';
 
 const Usuarios = () => {
-  const [usuarios, setUsuarios] = useState<Usuario[]>([
-    { id: 1, nome: 'João Silva', email: 'joao@email.com', senha: '123456' },
-    { id: 2, nome: 'Maria Santos', email: 'maria@email.com', senha: '123456' },
-    { id: 3, nome: 'Pedro Oliveira', email: 'pedro@email.com', senha: '123456' },
-  ]);
-
+  const [usuarios, setUsuarios] = useState<Usuario[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<Usuario | null>(null);
   const [formData, setFormData] = useState({
     nome: '',
     email: '',
-    senha: '',
+    cargo: '',
+    departamento: '',
+    status: 'ativo',
   });
+
+  // Carregar usuários ao montar o componente
+  useEffect(() => {
+    loadUsuarios();
+  }, []);
+
+  const loadUsuarios = async () => {
+    try {
+      setIsLoading(true);
+      const data = await usuariosApi.getAll();
+      setUsuarios(data);
+    } catch (error) {
+      console.error('Erro ao carregar usuários:', error);
+      alert('Erro ao carregar usuários');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const columns: ColumnDef<Usuario>[] = [
     {
@@ -42,11 +52,23 @@ const Usuarios = () => {
       accessorKey: 'email',
       header: 'Email',
     },
+    {
+      accessorKey: 'cargo',
+      header: 'Cargo',
+    },
+    {
+      accessorKey: 'departamento',
+      header: 'Departamento',
+    },
+    {
+      accessorKey: 'status',
+      header: 'Status',
+    },
   ];
 
   const handleOpenModal = () => {
     setEditingUser(null);
-    setFormData({ nome: '', email: '', senha: '' });
+    setFormData({ nome: '', email: '', cargo: '', departamento: '', status: 'ativo' });
     setIsModalOpen(true);
   };
 
@@ -55,44 +77,51 @@ const Usuarios = () => {
     setFormData({
       nome: usuario.nome,
       email: usuario.email,
-      senha: usuario.senha,
+      cargo: usuario.cargo,
+      departamento: usuario.departamento,
+      status: usuario.status,
     });
     setIsModalOpen(true);
   };
 
-  const handleSave = () => {
-    if (!formData.nome || !formData.email || !formData.senha) {
-      alert('Preencha todos os campos');
+  const handleSave = async () => {
+    if (!formData.nome || !formData.email || !formData.cargo || !formData.departamento) {
+      alert('Preencha todos os campos obrigatórios');
       return;
     }
 
-    if (editingUser) {
-      // Editar usuário existente
-      setUsuarios(
-        usuarios.map((u) =>
-          u.id === editingUser.id
-            ? { ...u, ...formData }
-            : u
-        )
-      );
-    } else {
-      // Criar novo usuário
-      const newUser: Usuario = {
-        id: Math.max(...usuarios.map((u) => u.id), 0) + 1,
-        ...formData,
-      };
-      setUsuarios([...usuarios, newUser]);
-    }
+    try {
+      if (editingUser) {
+        // Editar usuário existente
+        await usuariosApi.update(editingUser.id, formData);
+      } else {
+        // Criar novo usuário
+        await usuariosApi.create(formData);
+      }
 
-    setIsModalOpen(false);
-    setFormData({ nome: '', email: '', senha: '' });
+      // Recarregar lista de usuários
+      await loadUsuarios();
+      setIsModalOpen(false);
+      setFormData({ nome: '', email: '', cargo: '', departamento: '', status: 'ativo' });
+    } catch (error) {
+      console.error('Erro ao salvar usuário:', error);
+      alert('Erro ao salvar usuário');
+    }
   };
 
-  const handleModalDelete = () => {
-    if (editingUser && confirm('Deseja realmente excluir este usuário?')) {
-      setUsuarios(usuarios.filter((u) => u.id !== editingUser.id));
+  const handleModalDelete = async () => {
+    if (!editingUser || !confirm('Deseja realmente excluir este usuário?')) {
+      return;
+    }
+
+    try {
+      await usuariosApi.delete(editingUser.id);
+      await loadUsuarios();
       setIsModalOpen(false);
-      setFormData({ nome: '', email: '', senha: '' });
+      setFormData({ nome: '', email: '', cargo: '', departamento: '', status: 'ativo' });
+    } catch (error) {
+      console.error('Erro ao excluir usuário:', error);
+      alert('Erro ao excluir usuário');
     }
   };
 
@@ -113,13 +142,19 @@ const Usuarios = () => {
         </div>
 
         <div className="bg-card border rounded-lg p-6">
-          <DataTable
-            columns={columns}
-            data={usuarios}
-            searchKey="nome"
-            searchPlaceholder="Buscar por nome..."
-            onRowClick={handleRowClick}
-          />
+          {isLoading ? (
+            <div className="text-center py-8 text-muted-foreground">
+              Carregando usuários...
+            </div>
+          ) : (
+            <DataTable
+              columns={columns}
+              data={usuarios}
+              searchKey="nome"
+              searchPlaceholder="Buscar por nome..."
+              onRowClick={handleRowClick}
+            />
+          )}
         </div>
       </div>
 
@@ -159,16 +194,42 @@ const Usuarios = () => {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="senha">Senha</Label>
+            <Label htmlFor="cargo">Cargo</Label>
             <Input
-              id="senha"
-              type="password"
-              placeholder="••••••••"
-              value={formData.senha}
+              id="cargo"
+              placeholder="Ex: Desenvolvedor, Gerente"
+              value={formData.cargo}
               onChange={(e) =>
-                setFormData({ ...formData, senha: e.target.value })
+                setFormData({ ...formData, cargo: e.target.value })
               }
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="departamento">Departamento</Label>
+            <Input
+              id="departamento"
+              placeholder="Ex: TI, RH, Financeiro"
+              value={formData.departamento}
+              onChange={(e) =>
+                setFormData({ ...formData, departamento: e.target.value })
+              }
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="status">Status</Label>
+            <select
+              id="status"
+              value={formData.status}
+              onChange={(e) =>
+                setFormData({ ...formData, status: e.target.value })
+              }
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
+              <option value="ativo">Ativo</option>
+              <option value="inativo">Inativo</option>
+            </select>
           </div>
         </div>
       </Modal>
